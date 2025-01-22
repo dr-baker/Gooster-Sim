@@ -107,6 +107,12 @@ class Simulator:
         """
         Simulates a battle between two Goo instances.
         Returns True if goo1 wins, False if goo2 wins.
+
+        Assumptions:
+        - Faster gooster gets a free hit start of battle that can not crit
+        - Crit fully bypasses dodge
+        - Win is evaluated after each damage event and not in rounds (no ties)
+        - In speed tie: first gooster is decided randomly at start of battle
         """
         # Determine turn order
         goo1_first = goo1.spd > goo2.spd or (goo1.spd == goo2.spd and random.random() < 0.5)
@@ -115,8 +121,12 @@ class Simulator:
         g1_battle = BattleInstance(goo1)
         g2_battle = BattleInstance(goo2)
 
-
         attacker, defender = (g1_battle, g2_battle) if goo1_first else (g2_battle, g1_battle)
+
+        # Free hit
+        defender.take_damage(attacker.goo.atk)
+        if defender.current_hp <= 0:
+            return attacker == g1_battle
 
         # Battle loop
         while True:
@@ -134,18 +144,20 @@ class Simulator:
         Simulates an attack from one Goo to another.
         """
         dh_chance = max(0, (attacker.goo.spd - defender.goo.ddg) * 0.05)
-        ddg_chance = defender.goo.ddg * 0.02
+        ddg_chance = max(0, (defender.goo.ddg * 0.02) - (attacker.goo.spd * 0.01) )
         roll = random.random()
 
         if roll <= dh_chance:
             # Critical hit
             defender.take_damage(attacker.goo.atk * 2)
+            return 'crit'
         elif roll <= dh_chance + ddg_chance:
             # Attack dodged
-            pass
+            return 'dodge'
         else:
             # Normal hit
             defender.take_damage(attacker.goo.atk)
+            return 'hit'
 
     @staticmethod
     def n_battles(goo1, goo2, n=100):
