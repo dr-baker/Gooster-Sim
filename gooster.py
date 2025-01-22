@@ -2,7 +2,8 @@ import pandas as pd
 import random
 import logging
 import multiprocessing
-import copy
+# import copy
+import itertools
 
 
 class Gooster:
@@ -10,12 +11,32 @@ class Gooster:
     Represents a Goo character with attributes like health, attack, speed, dodge, and level.
     """
 
-    def __init__(self, hp=100, atk=10, spd=10, ddg=10, level=1):
-        self.hp = hp
-        self.atk = atk
-        self.spd = spd
-        self.ddg = ddg
-        self.level = level
+    def __init__(self, stat_upgrades=None, level=None):
+        self.hp = 100
+        self.atk = 10
+        self.spd = 10
+        self.ddg = 10
+        self.level = 1
+        # TODO
+        self.is_elem = True
+        self.is_omega = True
+        
+        if stat_upgrades and level:
+            raise Exception("Invalid input. Init goosters with stats array and level will be set automatically. \
+                            Assign with level to assign stats randomly. Do not set both.")
+        if stat_upgrades:
+            self.set_stats(*stat_upgrades)
+        if level:
+            self.rand_level_to(level)
+            
+    def set_stats(self, hp, atk, spd, ddg):
+        """
+        Applies multiple upgrades to the Goo's stats.
+        """
+        self.increment_stat("hp", hp)
+        self.increment_stat("atk", atk)
+        self.increment_stat("spd", spd)
+        self.increment_stat("ddg", ddg)
 
     def increment_stat(self, stat_name, amount=1):
         """
@@ -35,7 +56,7 @@ class Gooster:
         """
         Randomly assigns stat upgrades to reach a given level.
         """
-        for _ in range(1, level):
+        for _ in range(0, level-self.level):
             self._increment_random_stat()
 
     def _increment_random_stat(self):
@@ -45,15 +66,6 @@ class Gooster:
         stat_options = ['hp', 'atk', 'spd', 'ddg']
         chosen_stat = random.choice(stat_options)
         self.increment_stat(chosen_stat)
-
-    def set_stats(self, hp, atk, spd, ddg):
-        """
-        Applies multiple upgrades to the Goo's stats.
-        """
-        self.increment_stat("hp", hp)
-        self.increment_stat("atk", atk)
-        self.increment_stat("spd", spd)
-        self.increment_stat("ddg", ddg)
 
     def to_dataframe_row(self):
         """
@@ -159,15 +171,32 @@ class Simulator:
             defender.take_damage(attacker.goo.atk)
             return 'hit'
 
+    # @staticmethod
+    # def n_battles(goo1, goo2, n=100):
+    #     """
+    #     Simulates n battles between two Goo instances and calculates the win rate for goo1.
+    #     """
+    #     pool = multiprocessing.Pool(processes=4)
+    #     results = pool.starmap(Simulator.battle, [(goo1, goo2) for _ in range(n)])
+    #     pool.close()
+    #     return sum(results) / n
+    
     @staticmethod
     def n_battles(goo1, goo2, n=100):
-        """
-        Simulates n battles between two Goo instances and calculates the win rate for goo1.
-        """
-        pool = multiprocessing.Pool(processes=4)
-        results = pool.starmap(Simulator.battle, [(goo1, goo2) for _ in range(n)])
-        pool.close()
-        return sum(results) / n
+        wins = 0
+        losses = 0
+        
+        for _ in range(n):
+            wins += Simulator.battle(goo1, goo2)
+
+        win_rate = wins / n
+        return n, wins, win_rate
+    
+    @staticmethod
+    def _partitions(n, k):
+        # https://stackoverflow.com/questions/28965734/general-bars-and-stars
+        for c in itertools.combinations(range(n+k-1), k-1):
+            yield [b-a-1 for a, b in zip((-1,)+c, c+(n+k-1,))]
 
     @staticmethod
     def generate_permutations(level):
@@ -175,44 +204,140 @@ class Simulator:
         Generates all possible Goo stat combinations up to a given level.
         """
         permutations = []
-        for hp in range(level):
-            for atk in range(level - hp):
-                for spd in range(level - hp - atk):
-                    ddg = level - hp - atk - spd
-                    goo_instance = Gooster()
-                    goo_instance.set_stats(hp, atk, spd, ddg)
-                    permutations.append(goo_instance)
+        for stats in Simulator._partitions(level,4):
+            goo_instance = Gooster(stat_upgrades=stats)
+            permutations.append(goo_instance)
         return permutations
 
     @staticmethod
-    def simulate_matrix(perms, n=300):
+    def simulate_matrix(attackers, defenders, n=300):
         """
         Simulates a battle matrix for Goo permutations.
         """
         results = {}
-        for attacker in perms:
+        for attacker in attackers:
             results[attacker] = {}
-            for defender in perms:
+            for defender in defenders:
                 results[attacker][defender] = Simulator.n_battles(attacker, defender, n)
         return pd.DataFrame(results)
+    
+    @staticmethod
+    def get_random_enemy(attacker_level, is_elem=True, is_omega=True):
+        """
+        Assumptions:
+        - Using fairly small sample size for rates, round up to nearest whole %
+        - Assume rarest options are top of the waterfall
+        """
+        roll = random.random()
+        enemy_probabilities = [
+            ("sshiny", roll < 0.005 and attacker_level >= 25),
+            ("ninja", roll < 0.01 and attacker_level >= 25),
+            ("angel", roll < 0.02 and is_omega and attacker_level >= 30),
+            ("omega", roll < 0.35 and is_elem and attacker_level >= 25),
+            ("elemental", roll < 0.8 and attacker_level >= 20),
+            ("level_20", roll < 0.10 and attacker_level >= 20),
+            ("shiny", roll < 0.1)
+        ]
 
+        # Return first matching enemy
+        for enemy, condition in enemy_probabilities:
+            if condition:
+                return enemy, Simulator.get_enemy_by_type(attacker_level, enemy)
+            
+        # Default enemy type if no special conditions are met
+        return 'normal', Simulator.get_enemy_by_type(attacker_level, 'normal')  
+    
+    @staticmethod
+    def get_enemy_by_type(attacker_level, enemy_type):
+        if enemy_type == 'ninja':
+            return Gooster(stat_upgrades=[0,0,0,49])
+        if enemy_type == 'sshiny':
+            return Gooster(level=attacker_level+2)
+        if enemy_type == 'angel':
+            # Assume angel is created as 240/24/10/10 with random distribution up to level+5
+            gooster = Gooster(stat_upgrades=[14,14,0,0])
+            gooster.rand_level_to(attacker_level+5)
+            return gooster
+        if enemy_type == 'omega':
+            return Gooster(level=30)
+        if enemy_type == 'elemental':
+            return Gooster(level=25)
+        if enemy_type == 'level_20':
+            return Gooster(level=20)
+        if enemy_type == 'shiny':
+            return Gooster(level=attacker_level+1)
+        
+        # Otherwise return a regular gooster in range [level-3, level]
+        opponent_level = random.choice( range(attacker_level-3,attacker_level+1) )
+        return Gooster(level=opponent_level)
+
+
+
+
+    @staticmethod
+    def simulate_random_samples(attackers, n=3000):
+        """
+        Simulates battles between attackers and randomly generated enemies.
+
+        Parameters:
+        - attackers (list): List of attacker objects.
+        - n (int): Number of simulations per attacker (default: 3000).
+
+        Returns:
+        - pd.DataFrame: A summary of the simulation results.
+        """
+        results = {}
+
+        for attacker in attackers:
+            results[attacker] = {}
+
+            for _ in range(n):
+                enemy_type, enemy = Simulator.get_random_enemy(
+                    attacker.level, is_elem=attacker.is_elem, is_omega=attacker.is_omega
+                )
+
+                # Ensure the enemy_type key exists in results[attacker]
+                if enemy_type not in results[attacker]:
+                    results[attacker][enemy_type] = {'n': 0, 'wins': 0}
+
+                # Update counts
+                results[attacker][enemy_type]['n'] += 1
+                results[attacker][enemy_type]['wins'] += Simulator.battle(attacker, enemy)
+
+        return pd.DataFrame(results)
+
+
+
+def test_angel_gen():
+    for i in range(0,20):
+        print(Simulator.get_enemy_by_type(30, 'angel'))
 
 def main():
     """
     Main entry point for the simulation.
     """
-    # test_level = 10
-    # permutations = Simulator.generate_permutations(test_level)
-    # print(f"Generated {len(permutations)} permutations.")
+    test_level = 30
+    permutations = Simulator.generate_permutations(test_level)
+    print(f"Generated {len(permutations)} permutations.")
 
-    # battle_results = Simulator.simulate_matrix(permutations, n=150)
-    # battle_results.to_csv('g_matrix.csv')
-    # print("Simulation completed. Results saved to g_matrix.csv")
-    goo = Gooster()
-    print(goo)
-    goo.rand_level_to(1)
-    print(goo)
+    battle_results = Simulator.simulate_matrix(permutations,permutations, n=100)
+    file_name = f'g_matrix_{test_level}.csv'
+    battle_results.to_csv(file_name)
+    print(f'Simulation completed. Results saved to {file_name}')
+
+def main2():
+    tommy = Gooster(stat_upgrades=[9,10,0,10])
+    tomas = Gooster(stat_upgrades=[12,10,1,9])
+    pirate = Gooster(stat_upgrades=[1,15,16,0])
+    attackers = [tommy, tomas]
+
+    df = Simulator.simulate_random_samples(attackers, 5000)
+    file_name = f'g_sample.csv'
+    df.to_csv(file_name)
+
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.WARNING)
-    main()
+    # main()
+    # test_angel_gen()
+    main2()
