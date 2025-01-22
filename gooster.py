@@ -5,6 +5,12 @@ import multiprocessing
 # import copy
 import itertools
 
+GOO_VALUES = {
+    "angel": 20000,
+    "omega": 10000,
+    "elemental": 5000,
+    "level_20": 1000
+}
 
 class Gooster:
     """
@@ -298,13 +304,28 @@ class Simulator:
 
                 # Ensure the enemy_type key exists in results[attacker]
                 if enemy_type not in results[attacker]:
-                    results[attacker][enemy_type] = {'n': 0, 'wins': 0}
+                    results[attacker][enemy_type] = {'n': 0, 'wins': 0, 'goo':0}
 
                 # Update counts
                 results[attacker][enemy_type]['n'] += 1
-                results[attacker][enemy_type]['wins'] += Simulator.battle(attacker, enemy)
+                battle_won = Simulator.battle(attacker, enemy)
+                results[attacker][enemy_type]['wins'] += battle_won
+                if battle_won:
+                    results[attacker][enemy_type]['goo'] += GOO_VALUES[enemy_type]
 
         return pd.DataFrame(results)
+    
+    @staticmethod
+    def convert_to_winrate_df(results_df):
+        """
+        Converts the 3D results DataFrame into a 2D DataFrame with win rates.
+        """
+        return pd.DataFrame({
+            attacker: {enemy: [round(stats['wins'] / stats['n'],3), stats['n']] if stats['n'] else None 
+                    for enemy, stats in enemy_results.items()}
+            for attacker, enemy_results in results_df.to_dict().items()
+        }).T  # Transpose to make attackers rows and enemies columns
+
 
 
 
@@ -329,9 +350,10 @@ def main2():
     tommy = Gooster(stat_upgrades=[9,10,0,10])
     tomas = Gooster(stat_upgrades=[12,10,1,9])
     pirate = Gooster(stat_upgrades=[1,15,16,0])
-    attackers = [tommy, tomas]
+    attackers = [tommy, tomas,pirate]
 
-    df = Simulator.simulate_random_samples(attackers, 5000)
+    df = Simulator.simulate_random_samples(attackers, 10000)
+    df = Simulator.convert_to_winrate_df(df)
     file_name = f'g_sample.csv'
     df.to_csv(file_name)
 
