@@ -2,65 +2,69 @@ import pandas as pd
 import random
 import logging
 import multiprocessing
+import copy
 
 
+class Gooster:
+    """
+    Represents a Goo character with attributes like health, attack, speed, dodge, and level.
+    """
 
-class goo:
     def __init__(self, hp=100, atk=10, spd=10, ddg=10, level=1):
         self.hp = hp
         self.atk = atk
         self.spd = spd
         self.ddg = ddg
         self.level = level
-        self.bhp = hp
 
-    def rand_level(self, level):
-        for i in range(1, level):
-            self.increment_random_stat()
-             
-    def increment_random_stat(self):
-        random_stat = random.choice(['increment_hp', 'increment_spd', 'increment_atk', 'increment_ddg'])
-        getattr(self, random_stat)()
+    def increment_stat(self, stat_name, amount=1):
+        """
+        Increments a specific stat by the given amount.
+        """
+        if stat_name == "hp":
+            self.hp += 10 * amount
+        elif stat_name == "atk":
+            self.atk += amount
+        elif stat_name == "spd":
+            self.spd += amount
+        elif stat_name == "ddg":
+            self.ddg += amount
+        self.level += amount
 
-    def increment_hp(self):
-        self.hp += 10
-        self.level += 1
+    def rand_level_to(self, level):
+        """
+        Randomly assigns stat upgrades to reach a given level.
+        """
+        for _ in range(1, level):
+            self._increment_random_stat()
 
-    def increment_atk(self):
-        self.atk += 1
-        self.level += 1
+    def _increment_random_stat(self):
+        """
+        Randomly increments one of the Goo's stats.
+        """
+        stat_options = ['hp', 'atk', 'spd', 'ddg']
+        chosen_stat = random.choice(stat_options)
+        self.increment_stat(chosen_stat)
 
-    def increment_spd(self):
-        self.spd += 1
-        self.level += 1
-
-    def increment_ddg(self):
-        self.ddg += 1
-        self.level += 1
-        
-    def reset_bhp(self):
-        self.bhp = self.hp
-        
-    def updgrade(self, hp, atk, spd, ddg):
-        for _ in range(hp):
-            self.increment_hp()
-        for _ in range(atk):  
-            self.increment_atk()
-        for _ in range(spd):
-            self.increment_spd()
-        for _ in range(ddg):
-            self.increment_ddg()
+    def set_stats(self, hp, atk, spd, ddg):
+        """
+        Applies multiple upgrades to the Goo's stats.
+        """
+        self.increment_stat("hp", hp)
+        self.increment_stat("atk", atk)
+        self.increment_stat("spd", spd)
+        self.increment_stat("ddg", ddg)
 
     def to_dataframe_row(self):
-        return pd.DataFrame([{
-            'level': self.level,
-            'hp': self.hp,
-            'atk': self.atk,
-            'spd': self.spd,
-            'ddg': self.ddg
-        }])
-        
+        """
+        Converts the Goo's attributes into a DataFrame row.
+        """
+        return pd.DataFrame([self.to_dict()])
+
     def to_dict(self):
+        """
+        Converts the Goo's attributes into a dictionary.
+        """
         return {
             'level': self.level,
             'hp': self.hp,
@@ -68,208 +72,135 @@ class goo:
             'spd': self.spd,
             'ddg': self.ddg
         }
-        
-    def __copy__(self, memo):
-        return goo(self.hp, self.atk, self.spd, self.ddg, self.level)
-    
+
     def __str__(self):
-        return f'{self.level}|{int((self.hp-100)/10)},{self.atk-10},{self.spd-10},{self.ddg-10}'
-        # return f'{self.level}|{self.hp},{self.atk},{self.spd},{self.ddg}'
-        
-class sim:
+        """
+        Returns a string representation of the Goo.
+        """
+        return f'{self.level}|{int((self.hp - 100) / 10)},{self.atk - 10},{self.spd - 10},{self.ddg - 10}'
+
+
+class BattleInstance:
+    """
+    A battle wrapper that maintains a Goo's battle-specific state without modifying the original object.
+    """
+
+    def __init__(self, goo):
+        self.goo = goo
+        self.current_hp = goo.hp
+
+    def take_damage(self, damage):
+        """
+        Reduces the current HP during a battle.
+        """
+        self.current_hp -= damage
+        return self.current_hp > 0
+
+
+class Simulator:
+    """
+    Handles simulation logic for battles between Goo instances.
+    """
+
+    @staticmethod
     def battle(goo1, goo2):
-        '''Simulate a battle between two goos. Returns true if goo1 wins, false if goo2 wins. Handles goo1==goo2.'''
-        goo1_first = False
-        ## Get turn order
-        if goo1.spd > goo2.spd:
-            f, s = goo1, goo2
-            goo1_first = True
-        elif goo1.spd == goo2.spd:
-            ## Speed tie, assign randomly
-            r = random.random()
-            if r < 0.5:
-                f,s = goo1, goo2
-                goo1_first = True
-            else:
-                f,s = goo2, goo1
-        else:
-            f,s = goo2, goo1
-            
-        ## Use copies to avoid issues and keep track for winner
-        f,s = f.__copy__(None), s.__copy__(None)
+        """
+        Simulates a battle between two Goo instances.
+        Returns True if goo1 wins, False if goo2 wins.
+        """
+        # Determine turn order
+        goo1_first = goo1.spd > goo2.spd or (goo1.spd == goo2.spd and random.random() < 0.5)
 
-        winner = None
-        logging.debug(f'{goo1} vs {goo2}')
+        # Wrap Goos in BattleInstance
+        g1_battle = BattleInstance(goo1)
+        g2_battle = BattleInstance(goo2)
+
+
+        attacker, defender = (g1_battle, g2_battle) if goo1_first else (g2_battle, g1_battle)
+
+        # Battle loop
         while True:
-            logging.debug(f'{f.bhp} | {s.bhp}')
-            ## First attacker
-            sim.attack(f, s)
-            if s.bhp <= 0:
-                winner = f
-                break
-            ## Second attacker
-            sim.attack(s, f)
-            if f.bhp <= 0:
-                winner = s
-                break
-        
-        return (winner == f and goo1_first) or (winner == s and not goo1_first)
-    
+            Simulator.attack(attacker, defender)
+            if defender.current_hp <= 0:
+                return attacker == g1_battle
+
+            Simulator.attack(defender, attacker)
+            if attacker.current_hp <= 0:
+                return defender == g1_battle
+
+    @staticmethod
     def attack(attacker, defender):
-        dh_chance =  max( 0, (attacker.spd - defender.ddg) * 0.05 )
-        ddg_chance =  defender.ddg * 0.02
-        logging.debug(f'{attacker.spd} | {defender.ddg} | {dh_chance} | {ddg_chance}')
-        
-        ## dh_chance chance of crit, ddg_chance chance of dodge, else normal attack
-        r = random.random()
-        if r <= dh_chance:
-            logging.debug(f'crit')
-            defender.bhp -= attacker.atk * 2 ## crit
-        elif r + dh_chance < ddg_chance:
-            logging.debug(f'dodge')
-            pass ## dodge
+        """
+        Simulates an attack from one Goo to another.
+        """
+        dh_chance = max(0, (attacker.goo.spd - defender.goo.ddg) * 0.05)
+        ddg_chance = defender.goo.ddg * 0.02
+        roll = random.random()
+
+        if roll <= dh_chance:
+            # Critical hit
+            defender.take_damage(attacker.goo.atk * 2)
+        elif roll <= dh_chance + ddg_chance:
+            # Attack dodged
+            pass
         else:
-            logging.debug(f'hit')
-            defender.bhp -= attacker.atk ## normal attack
-        
+            # Normal hit
+            defender.take_damage(attacker.goo.atk)
 
-    def n_battles(goo1, goo2, n):
-        wins = 0
-        losses = 0
-        
-        for _ in range(n):
-            wins += sim.battle(goo1, goo2)
+    @staticmethod
+    def n_battles(goo1, goo2, n=100):
+        """
+        Simulates n battles between two Goo instances and calculates the win rate for goo1.
+        """
+        pool = multiprocessing.Pool(processes=4)
+        results = pool.starmap(Simulator.battle, [(goo1, goo2) for _ in range(n)])
+        pool.close()
+        return sum(results) / n
 
-        win_rate = wins / n
-        return n, wins, win_rate
-    
-    def n_battles2(goo1, goo2, n):
-        wins = 0
-        losses = 0
-        
-        pool = multiprocessing.Pool(16)
-        results = pool.starmap(sim.battle, [(goo1, goo2) for _ in range(n)])
-        wins = sum(results)
+    @staticmethod
+    def generate_permutations(level):
+        """
+        Generates all possible Goo stat combinations up to a given level.
+        """
+        permutations = []
+        for hp in range(level):
+            for atk in range(level - hp):
+                for spd in range(level - hp - atk):
+                    ddg = level - hp - atk - spd
+                    goo_instance = Gooster()
+                    goo_instance.set_stats(hp, atk, spd, ddg)
+                    permutations.append(goo_instance)
+        return permutations
 
-        win_rate = wins / n
-        return n, wins, win_rate
-    
-    def gen_permutations(test_level):
-        ## create a list of goos with all possible stats
-        perms = []
-        stats = [0,0,0,0]
-        for h in range(test_level):
-            stats[0] = h
-            for a in range(test_level - sum(stats)):
-                stats[1] = a
-                for s in range(test_level - sum(stats)):
-                    stats[2] = s
-                    for d in range(test_level - sum(stats)):
-                        stats[3] = d
-                        g = goo()
-                        g.updgrade(stats[0], stats[1], stats[2], stats[3])
-                        perms.append(g)
-                        stats[3]=0
-                    stats[2]=0
-                stats[1]=0
-        return perms
-    
-    def create_matrix(perms, n=300, test_level = None, skip_low_levels = True, skip_duplicates = True):
-        ## Simulate n battles for each perm vs each perm 
-        
-        ## if passed a test_level, only test goos of that level
-        if test_level is None:
-            matrix = {g: {g: None for g in perms} for g in perms} ## test all levels
-        else:
-            matrix = {g: {g: None for g in perms} for g in perms if g.level == test_level} ## only test one level attacker
-        
-        i=0
-        for g1 in matrix.keys():
-            print(f'{i}\tSimulating {g1} vs {len(matrix[g1])}')
-            for g2 in matrix[g1].keys():
-                if skip_low_levels and g2.level < g1.level-3:
-                    logging.info(f'{g2} is too low level for {g1}')
-                    continue
-                if skip_duplicates and g2 in matrix and matrix[g2][g1] is not None:
-                    logging.info(f'{g2} vs {g1} already simulated')
-                    matrix[g1][g2] = 1 - matrix[g2][g1]
-                    continue
-                
-                # print(f'Simulating {g1} vs {g2}')
-                n, wins, win_rate = sim.n_battles(g1, g2, 300)
-                
-                matrix[g1][g2] = win_rate
-            i += 1
-        ## Rows are attacker, columns are defender
-        return pd.DataFrame(matrix).T
-    
-    def create_rows(perms, n=300, test_level=None, skip_low_levels=True, skip_duplicates=True):
-        # Initialize DataFrame with MultiIndex
-        index = pd.MultiIndex.from_tuples([], names=['attacker', 'defender'])
-        df = pd.DataFrame(index=index, columns=['win_rate'])
-        
-        i = 0
-        for g1 in perms:
-            if test_level is not None and g1.level != test_level:
-                continue
-            
-            if skip_low_levels:
-                viable_opponents = [g for g in perms if g.level >= g1.level - 3 and g.level <= g1.level]
-                logging.info(f'{i}/{len(perms)}\tRemoving {len(perms) - len(viable_opponents)} opponents not in level range')
-            else:
-                viable_opponents = perms
-            
-            print(f'{i}/{len(perms)}\tSimulating {g1} vs {len(viable_opponents)}')
-            
-            dupes = 0
-            for g2 in viable_opponents:
-                if skip_duplicates and (g2, g1) in df.index:
-                    df.loc[(g1, g2), 'win_rate'] = 1 - df.loc[(g2, g1), 'win_rate']
-                    dupes += 1
-                    continue
-                n, wins, win_rate = sim.n_battles(g1, g2, n)
-                
-                df.loc[(g1, g2), 'win_rate'] = win_rate
-            if skip_duplicates: 
-                logging.info(f'Skipped {dupes} duplicates')
-            i += 1
-        
-        df.sort_index(level=[0,1], ascending=[False, False], inplace=True)
-        return df
+    @staticmethod
+    def simulate_matrix(perms, n=300):
+        """
+        Simulates a battle matrix for Goo permutations.
+        """
+        results = {}
+        for attacker in perms:
+            results[attacker] = {}
+            for defender in perms:
+                results[attacker][defender] = Simulator.n_battles(attacker, defender, n)
+        return pd.DataFrame(results)
 
-    
+
 def main():
-    test_level = 15
-    perms = sim.gen_permutations(test_level)         
-    print(f'Number of permutations: {len(perms)}')
+    """
+    Main entry point for the simulation.
+    """
+    # test_level = 10
+    # permutations = Simulator.generate_permutations(test_level)
+    # print(f"Generated {len(permutations)} permutations.")
 
-    # df = sim.create_matrix(perms, n=300, test_level = None, skip_low_levels = True, skip_duplicates = True)
-    df = sim.create_rows(perms, n=150, test_level = 15, skip_low_levels = True, skip_duplicates = True)
-    
-    try:
-        df.to_csv('g_matrix.csv')
-    except Exception as e:
-        logging.error(e)
-        input()
-        df.to_csv('g_matrix.csv')
-    print(df)
+    # battle_results = Simulator.simulate_matrix(permutations, n=150)
+    # battle_results.to_csv('g_matrix.csv')
+    # print("Simulation completed. Results saved to g_matrix.csv")
+    goo = Gooster()
+    print(goo)
+    goo.rand_level_to(1)
+    print(goo)
 
-def test():
-    g1 = goo(100,10,10,19,10)
-    # g2 = goo(190,10,10,10,10)
-    g2 = g1
-    print(sim.battle(g1, g2))
-    print(sim.battle(g1, g2))
-    print(sim.battle(g1, g2))
-    print(sim.battle(g1, g2))
-    print(sim.battle(g1, g2))
-    print(sim.battle(g1, g2))
-    print(sim.n_battles(g1, g2, 20))
- 
-if __name__ == '__main__':
+if __name__ == "__main__":
     logging.basicConfig(level=logging.WARNING)
-    logger = logging.getLogger(__name__)
-    # test()
     main()
-    
-    
