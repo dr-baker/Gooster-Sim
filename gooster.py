@@ -8,34 +8,74 @@ import itertools
 GOO_VALUES = {
     "angel": 20000,
     "omega": 10000,
-    "elemental": 5000,
+    "elem": 5000,
     "level_20": 1000
 }
+IDOL_MULT = 16
+
+ENEMY_PROBS = {
+    "shiny":    0.1,
+    "level_20":       0.1,
+    "elem":     0.1,
+    "omega":    0.05,
+    # "angel":    0, # test <30
+    "angel":    0.025, # was halved at one point
+    "sshiny":   0.01,
+    "ninja":    0.01,
+}
+ENEMY_CHECK_ORDER = ['shiny','level_20','elem','omega','angel','ninja','sshiny'] # ~introduction order
 
 class Gooster:
     """
     Represents a Goo character with attributes like health, attack, speed, dodge, and level.
     """
 
-    def __init__(self, stat_upgrades=None, level=None):
+    def __init__(self, is_elem = True, is_omega = True, is_shiny = False, 
+                 boss_type=None, stats=None, upgrade_counts=None, level=None):
         self.hp = 100
         self.atk = 10
         self.spd = 10
         self.ddg = 10
-        self.level = 1
-        # TODO
-        self.is_elem = True
-        self.is_omega = True
+        self.is_elem = is_omega or is_elem ## relevant as attacker
+        self.is_omega = is_omega ## relevant as attacker
+        self.boss_type = boss_type ## relevant for goo value
+        self.is_shiny = is_shiny ## relevant for goo value
         
-        if stat_upgrades and level:
-            raise Exception("Invalid input. Init goosters with stats array and level will be set automatically. \
-                            Assign with level to assign stats randomly. Do not set both.")
-        if stat_upgrades:
-            self.set_stats(*stat_upgrades)
+        if (stats or upgrade_counts) and level:
+            raise Exception("Invalid input. Level input expects no stats or upgrades.")
+        
+        if stats:
+            self.set_stats(*stats)
+        if upgrade_counts:
+            self.apply_upgrades(*upgrade_counts)
         if level:
             self.rand_level_to(level)
-            
+
     def set_stats(self, hp, atk, spd, ddg):
+        """
+        Applies multiple upgrades to the Goo's stats.
+        """
+        self.hp = hp
+        self.atk = atk
+        self.spd = spd
+        self.ddg = ddg
+
+    @property
+    def level(self):
+        return 1 + int((self.hp-100)/10) + self.atk-10 + self.spd-10 + self.ddg-10
+    
+    @property
+    def goo(self):
+        """
+        Returns goo value when this gooster is killed as an enemy.
+        """
+        base_value = self.level*10
+        boss_bonus = GOO_VALUES[self.boss_type] if self.boss_type in GOO_VALUES else 0
+        mult = 2 if self.is_shiny else 1
+        mult *= IDOL_MULT
+        return (base_value+boss_bonus)*mult
+            
+    def apply_upgrades(self, hp, atk, spd, ddg):
         """
         Applies multiple upgrades to the Goo's stats.
         """
@@ -56,7 +96,6 @@ class Gooster:
             self.spd += amount
         elif stat_name == "ddg":
             self.ddg += amount
-        self.level += amount
 
     def rand_level_to(self, level):
         """
@@ -95,7 +134,8 @@ class Gooster:
         """
         Returns a string representation of the Goo.
         """
-        return f'{self.level}|{int((self.hp - 100) / 10)},{self.atk - 10},{self.spd - 10},{self.ddg - 10}'
+        # return f'{self.level}|{int((self.hp - 100) / 10)},{self.atk - 10},{self.spd - 10},{self.ddg - 10}'
+        return f'{self.level}|{self.hp},{self.atk},{self.spd},{self.ddg}'
 
 
 class BattleInstance:
@@ -211,7 +251,7 @@ class Simulator:
         """
         permutations = []
         for stats in Simulator._partitions(level,4):
-            goo_instance = Gooster(stat_upgrades=stats)
+            goo_instance = Gooster(upgrade_counts=stats)
             permutations.append(goo_instance)
         return permutations
 
@@ -234,47 +274,51 @@ class Simulator:
         - Using fairly small sample size for rates, round up to nearest whole %
         - Assume rarest options are top of the waterfall
         """
-        roll = random.random()
-        enemy_probabilities = [
-            ("sshiny", roll < 0.005 and attacker_level >= 25),
-            ("ninja", roll < 0.01 and attacker_level >= 25),
-            ("angel", roll < 0.02 and is_omega and attacker_level >= 30),
-            ("omega", roll < 0.35 and is_elem and attacker_level >= 25),
-            ("elemental", roll < 0.8 and attacker_level >= 20),
-            ("level_20", roll < 0.10 and attacker_level >= 20),
-            ("shiny", roll < 0.1)
+        EXTRA_CONSTRAINTS = [
+            ("sshiny", attacker_level >= 25),
+            ("ninja", attacker_level >= 20),
+            ("angel", is_omega and attacker_level >= 30),
+            ("omega", is_elem and attacker_level >= 25),
+            ("elem", attacker_level >= 20),
+            ("level_20", attacker_level >= 19),
         ]
 
-        # Return first matching enemy
-        for enemy, condition in enemy_probabilities:
-            if condition:
-                return enemy, Simulator.get_enemy_by_type(attacker_level, enemy)
+        # Special cases
+        if attacker_level==19:
+            return "level_20", Simulator.create_enemy(attacker_level, "level_20")
+
+        # Return enemy according to waterfall probability algo
+        for enemy_type in ENEMY_CHECK_ORDER:
+            do_rng = random.random() < ENEMY_PROBS[enemy_type]
+            extra_constraint = EXTRA_CONSTRAINTS[enemy_type] if enemy_type in EXTRA_CONSTRAINTS else True
+            if do_rng and extra_constraint:
+                return enemy_type, Simulator.create_enemy(attacker_level, enemy_type)
             
         # Default enemy type if no special conditions are met
-        return 'normal', Simulator.get_enemy_by_type(attacker_level, 'normal')  
+        return 'normal', Simulator.create_enemy(attacker_level, 'normal')  
     
     @staticmethod
-    def get_enemy_by_type(attacker_level, enemy_type):
+    def create_enemy(attacker_level, enemy_type):
         if enemy_type == 'ninja':
-            return Gooster(stat_upgrades=[0,0,0,49])
+            return Gooster(stats=[100,10,10,59], boss_type=enemy_type)
         if enemy_type == 'sshiny':
-            return Gooster(level=attacker_level+2)
+            return Gooster(level=attacker_level+2) ## no shiny bonus on these
         if enemy_type == 'angel':
             # Assume angel is created as 240/24/10/10 with random distribution up to level+5
-            gooster = Gooster(stat_upgrades=[14,14,0,0])
+            gooster = Gooster(stats=[240,24,10,10], boss_type=enemy_type)
             gooster.rand_level_to(attacker_level+5)
             return gooster
         if enemy_type == 'omega':
-            return Gooster(level=30)
-        if enemy_type == 'elemental':
-            return Gooster(level=25)
+            return Gooster(level=30, boss_type=enemy_type)
+        if enemy_type == 'elem':
+            return Gooster(level=25, boss_type=enemy_type)
         if enemy_type == 'level_20':
-            return Gooster(level=20)
+            return Gooster(level=20, boss_type=enemy_type)
         if enemy_type == 'shiny':
-            return Gooster(level=attacker_level+1)
+            return Gooster(level=attacker_level+1, is_shiny=True)
         
         # Otherwise return a regular gooster in range [level-3, level]
-        opponent_level = random.choice( range(attacker_level-3,attacker_level+1) )
+        opponent_level = random.choice(range(int(attacker_level) - 3, int(attacker_level) + 1))
         return Gooster(level=opponent_level)
 
 
@@ -311,27 +355,86 @@ class Simulator:
                 battle_won = Simulator.battle(attacker, enemy)
                 results[attacker][enemy_type]['wins'] += battle_won
                 if battle_won:
-                    results[attacker][enemy_type]['goo'] += GOO_VALUES[enemy_type]
+                    results[attacker][enemy_type]['goo'] += enemy.goo
 
         return pd.DataFrame(results)
     
     @staticmethod
+    def humanize_number(value):
+        """Formats large numbers into a readable format (e.g., 2K, 12M)."""
+        return float(f"{value / 1_000_000:.1f}")
+        # if value >= 1_000_000:
+        #     return f"{value / 1_000_000:.1f}M"
+        # elif value >= 1_000:
+        #     return f"{value / 1_000:.1f}K"
+        # return str(value)
+
+    @staticmethod
     def convert_to_winrate_df(results_df):
         """
-        Converts the 3D results DataFrame into a 2D DataFrame with win rates.
+        Converts the 3D results DataFrame into a 2D DataFrame with win rates and goo values.
         """
         return pd.DataFrame({
-            attacker: {enemy: [round(stats['wins'] / stats['n'],3), stats['n']] if stats['n'] else None 
-                    for enemy, stats in enemy_results.items()}
+            attacker: {
+                enemy: [
+                    round(stats['wins'] / stats['n'], 3),   # Winrate
+                    stats['n'],                              # Number of battles
+                    Simulator.humanize_number(stats['goo'])           # Human-readable goo
+                ] if stats['n'] else None
+                for enemy, stats in enemy_results.items()
+            }
             for attacker, enemy_results in results_df.to_dict().items()
         }).T  # Transpose to make attackers rows and enemies columns
+    
+    @staticmethod
+    def export_results_to_excel(results_df, filename="simulation_results.xlsx"):
+        """
+        Converts the 3D results DataFrame into separate 2D matrices for win rates, battle counts, 
+        and goo earnings, then saves them as sheets in an Excel file.
+        
+        Parameters:
+        - results_df (pd.DataFrame): The results DataFrame from simulate_random_samples.
+        - filename (str): Name of the output Excel file.
+        """
+        winrate_matrix = {}
+        battle_count_matrix = {}
+        goo_matrix = {}
+
+        for attacker, enemy_results in results_df.to_dict().items():
+            winrate_matrix[attacker] = {}
+            battle_count_matrix[attacker] = {}
+            goo_matrix[attacker] = {}
+
+            for enemy, stats in enemy_results.items():
+                if stats['n']:  # Avoid division by zero
+                    winrate_matrix[attacker][enemy] = round(stats['wins'] / stats['n'], 3)
+                    battle_count_matrix[attacker][enemy] = stats['n']
+                    goo_matrix[attacker][enemy] = Simulator.humanize_number(stats['goo'])
+                else:
+                    winrate_matrix[attacker][enemy] = None
+                    battle_count_matrix[attacker][enemy] = None
+                    goo_matrix[attacker][enemy] = None
+
+        # Convert to DataFrame
+        winrate_df = pd.DataFrame(winrate_matrix).T
+        battle_count_df = pd.DataFrame(battle_count_matrix).T
+        goo_df = pd.DataFrame(goo_matrix).T
+
+        # Export to Excel
+        with pd.ExcelWriter(filename) as writer:
+            winrate_df.to_excel(writer, sheet_name="Win Rates")
+            battle_count_df.to_excel(writer, sheet_name="Battle Counts")
+            goo_df.to_excel(writer, sheet_name="Goo Earnings")
+
+        print(f"Results exported to {filename}")
 
 
 
 
 def test_angel_gen():
     for i in range(0,20):
-        print(Simulator.get_enemy_by_type(30, 'angel'))
+        g = Simulator.create_enemy(30, 'angel')
+        print(g)
 
 def main():
     """
@@ -347,19 +450,46 @@ def main():
     print(f'Simulation completed. Results saved to {file_name}')
 
 def main2():
-    tommy = Gooster(stat_upgrades=[9,10,0,10])
-    tomas = Gooster(stat_upgrades=[12,10,1,9])
-    pirate = Gooster(stat_upgrades=[1,15,16,0])
-    attackers = [tommy, tomas,pirate]
+    attackers = [
+        Gooster(upgrade_counts=[9,10,0,10]), 
+        Gooster(upgrade_counts=[12,10,1,9]),
+        Gooster(upgrade_counts=[10,10,1,11]),
+        Gooster(upgrade_counts=[1,15,16,0]),
+        Gooster(upgrade_counts=[6,10,16,0]),
+        Gooster(upgrade_counts=[1,10,16,5]),
+        Gooster(stats=[190,20,21,13]),
+    ]
 
     df = Simulator.simulate_random_samples(attackers, 10000)
-    df = Simulator.convert_to_winrate_df(df)
+    df2 = Simulator.convert_to_winrate_df(df)
     file_name = f'g_sample.csv'
-    df.to_csv(file_name)
+    df2.to_csv(file_name)
+    Simulator.export_results_to_excel(df)
+
+    
+
+def main3():
+    required_upgrades = [0,10,0,0]
+    remaining_levels = 33 - 10
+    ## get all combos but only include attack ends with 2 or 5
+    next_upgrades = [p for p in Simulator._partitions(remaining_levels, 4) if p[1]<31 and (p[1]% 10 == 2 or p[1] % 5 == 0)]
+    print(len(next_upgrades))
+
+    attackers = []
+    for upgrade in next_upgrades:
+        g = Gooster(upgrade_counts=required_upgrades)
+        g.apply_upgrades(*upgrade)
+        attackers.append(g)
+    
+    df = Simulator.simulate_random_samples(attackers, 10000)
+    Simulator.export_results_to_excel(df)
+
 
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.WARNING)
     # main()
     # test_angel_gen()
-    main2()
+    # main2()
+    main3()
+
