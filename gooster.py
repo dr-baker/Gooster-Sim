@@ -25,6 +25,7 @@ ENEMY_PROBS = {
 }
 ENEMY_CHECK_ORDER = ['shiny','level_20','elem','omega','angel','ninja','sshiny'] # ~introduction order
 
+###################################################################### GOOSTER DEFINITION
 class Gooster:
     """
     Represents a Goo character with attributes like health, attack, speed, dodge, and level.
@@ -137,6 +138,7 @@ class Gooster:
         # return f'{self.level}|{int((self.hp - 100) / 10)},{self.atk - 10},{self.spd - 10},{self.ddg - 10}'
         return f'{self.level}|{self.hp},{self.atk},{self.spd},{self.ddg}'
 
+###################################################################### SIMULATOR
 
 class BattleInstance:
     """
@@ -368,3 +370,140 @@ class Simulator:
                     is_shiny_streak = False
 
         return pd.DataFrame(results)
+    
+    @staticmethod
+    def humanize_number(value):
+        """Formats large numbers into a readable format (e.g., 2K, 12M)."""
+        return float(f"{value / 1_000_000:.1f}")
+        # if value >= 1_000_000:
+        #     return f"{value / 1_000_000:.1f}M"
+        # elif value >= 1_000:
+        #     return f"{value / 1_000:.1f}K"
+        # return str(value)
+
+    @staticmethod
+    def convert_to_winrate_df(results_df):
+        """
+        Converts the 3D results DataFrame into a 2D DataFrame with win rates and goo values.
+        """
+        return pd.DataFrame({
+            attacker: {
+                enemy: [
+                    round(stats['wins'] / stats['n'], 3),   # Winrate
+                    stats['n'],                              # Number of battles
+                    Simulator.humanize_number(stats['goo'])           # Human-readable goo
+                ] if stats['n'] else None
+                for enemy, stats in enemy_results.items()
+            }
+            for attacker, enemy_results in results_df.to_dict().items()
+        }).T  # Transpose to make attackers rows and enemies columns
+    
+    @staticmethod
+    def export_results_to_excel(results_df, filename="simulation_results.xlsx"):
+        """
+        Converts the 3D results DataFrame into separate 2D matrices for win rates, battle counts, 
+        and goo earnings, then saves them as sheets in an Excel file.
+        
+        Parameters:
+        - results_df (pd.DataFrame): The results DataFrame from simulate_random_samples.
+        - filename (str): Name of the output Excel file.
+        """
+        winrate_matrix = {}
+        battle_count_matrix = {}
+        goo_matrix = {}
+
+        for attacker, enemy_results in results_df.to_dict().items():
+            winrate_matrix[attacker] = {}
+            battle_count_matrix[attacker] = {}
+            goo_matrix[attacker] = {}
+
+            for enemy, stats in enemy_results.items():
+                if stats['n']:  # Avoid division by zero
+                    winrate_matrix[attacker][enemy] = round(stats['wins'] / stats['n'], 3)
+                    battle_count_matrix[attacker][enemy] = stats['n']
+                    goo_matrix[attacker][enemy] = Simulator.humanize_number(stats['goo'])
+                else:
+                    winrate_matrix[attacker][enemy] = None
+                    battle_count_matrix[attacker][enemy] = None
+                    goo_matrix[attacker][enemy] = None
+
+        # Convert to DataFrame
+        winrate_df = pd.DataFrame(winrate_matrix).T
+        battle_count_df = pd.DataFrame(battle_count_matrix).T
+        goo_df = pd.DataFrame(goo_matrix).T
+
+        # Export to Excel
+        with pd.ExcelWriter(filename) as writer:
+            winrate_df.to_excel(writer, sheet_name="Win Rates")
+            battle_count_df.to_excel(writer, sheet_name="Battle Counts")
+            goo_df.to_excel(writer, sheet_name="Goo Earnings")
+
+        print(f"Results exported to {filename}")
+
+
+###################################################################### MAIN
+
+
+def test_angel_gen():
+    for i in range(0,20):
+        g = Simulator.create_enemy(30, 'angel')
+        print(g)
+
+def sim_all_builds_cross_product():
+    """
+    Main entry point for the simulation.
+    """
+    test_level = 30
+    permutations = Simulator.generate_permutations(test_level)
+    print(f"Generated {len(permutations)} permutations.")
+
+    battle_results = Simulator.simulate_matrix(permutations,permutations, n=100)
+    file_name = f'g_matrix_{test_level}.csv'
+    battle_results.to_csv(file_name)
+    print(f'Simulation completed. Results saved to {file_name}')
+
+def sim_set_builds():
+    attackers = [
+        Gooster(upgrade_counts=[9,10,0,10]), 
+        Gooster(upgrade_counts=[12,10,1,9]),
+        Gooster(upgrade_counts=[10,10,1,11]),
+        Gooster(upgrade_counts=[1,15,16,0]),
+        Gooster(upgrade_counts=[6,10,16,0]),
+        Gooster(upgrade_counts=[1,10,16,5]),
+        Gooster(stats=[190,20,21,13]),
+    ]
+
+    df = Simulator.simulate_random_samples(attackers, 10000)
+    df2 = Simulator.convert_to_winrate_df(df)
+    file_name = f'g_sample.csv'
+    df2.to_csv(file_name)
+    Simulator.export_results_to_excel(df)
+
+    
+
+def sim_all_good_builds():
+    required_upgrades = [0,10,0,0]
+    target_level = 35
+    remaining_levels = target_level - 10 - 1
+    ## get all combos but only include attack ends with 2 or 5 also total attack <=35
+    next_upgrades = [p for p in Simulator._partitions(remaining_levels, 4) if (p[1]+20<35 and (p[1] % 10 == 2 or p[1] % 5 == 0)) ]
+    print(len(next_upgrades))
+
+    attackers = []
+    for upgrade in next_upgrades:
+        g = Gooster(upgrade_counts=required_upgrades)
+        g.apply_upgrades(*upgrade)
+        attackers.append(g)
+    
+    df = Simulator.simulate_random_samples(attackers, 10000)
+    Simulator.export_results_to_excel(df)
+
+
+
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.WARNING)
+    # sim_all_builds_cross_product()
+    # test_angel_gen()
+    # sim_set_builds()
+    sim_all_good_builds()
+
