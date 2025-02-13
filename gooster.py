@@ -6,6 +6,8 @@ import multiprocessing
 import itertools
 
 GOO_VALUES = {
+    "ultima": 80000,
+    "angel2": 40000,
     "angel": 20000,
     "omega": 10000,
     "elem": 5000,
@@ -13,17 +15,17 @@ GOO_VALUES = {
 }
 IDOL_MULT = 16
 
-ENEMY_PROBS = {
-    "shiny":    0.1,
-    "level_20":       0.1,
-    "elem":     0.1,
-    "omega":    0.05,
-    # "angel":    0, # test <30
-    "angel":    0.025, # was halved at one point
-    "sshiny":   0.01,
-    "ninja":    0.01,
-}
-ENEMY_CHECK_ORDER = ['shiny','level_20','elem','omega','angel','ninja','sshiny'] # ~introduction order
+# ENEMY_PROBS = {
+#     "shiny":    0.1,
+#     "level_20":       0.1,
+#     "elem":     0.1,
+#     "omega":    0.05,
+#     # "angel":    0, # test <30
+#     "angel":    0.025, # was halved at one point
+#     "sshiny":   0.01,
+#     "ninja":    0.01,
+# }
+# ENEMY_CHECK_ORDER = ['shiny','level_20','elem','omega','angel','ninja','sshiny'] # ~introduction order
 
 ###################################################################### GOOSTER DEFINITION
 class Gooster:
@@ -270,47 +272,74 @@ class Simulator:
         return pd.DataFrame(results)
     
     @staticmethod
-    def get_random_enemy(attacker_level, is_elem=True, is_omega=True, is_shiny_streak=False):
+    def get_random_enemy(level, is_elem=False,is_omega=False,shiny_streak=-1,is_ultima=False):
         """
-        Assumptions:
-        - Using fairly small sample size for rates, round up to nearest whole %
-        - Assume rarest options are top of the waterfall
+        Returns a random enemy based on the player's level.
+        Bosses become available every 5 levels, with their appearance rates increasing.
         """
-        EXTRA_CONSTRAINTS = [
-            ("sshiny", attacker_level >= 25),
-            ("ninja", attacker_level >= 20),
-            ("angel", is_omega and attacker_level >= 30),
-            ("omega", is_elem and attacker_level >= 25),
-            ("elem", attacker_level >= 20),
-            ("level_20", attacker_level >= 19),
-        ]
+        ## Special case, no random
+        if shiny_streak == 8:
+            return "angel2", Simulator.create_enemy(level, "angel2")
+        elif shiny_streak > -1:
+            return "angelshiny", Simulator.create_enemy(level, "angelshiny")
 
-        # Special cases
-        if attacker_level==19:
-            return "level_20", Simulator.create_enemy(attacker_level, "level_20")
-        if is_shiny_streak:
-            return "shiny", Simulator.create_enemy(attacker_level, "shiny")
+        bosses = {
+            # 35: ("ultima", 1/320),
+            30: ("angel", 1/160),
+            25: ("omega", 1/320),
+            20: ("elem", 1/160),
+            19: ("level_20", 1/160),
+        }
+        fixed_bosses = {
+            19: ("ninja", 1/80),
+            20: ("sshiny", 1/160),
+            25: ("shiny", 1/10),
+        }
+        
+        # Determine available bosses
+        available_bosses = {lvl: boss for lvl, boss in bosses.items() if level >= lvl}
+        
+        boss_probabilities = {}
+        # Adjust probabilities
+        for start_level, (boss_name, base_rate) in available_bosses.items():
+            # Calculate rate increase based on levels since unlock (caps at 5 levels)
+            levels_since_unlock = min(level - start_level, 4)  # 0 to 4
+            # Bonus for matching type
+            if boss_name == 'omega' and is_omega:
+                levels_since_unlock = 4
+            if boss_name == 'elem' and is_elem:
+                levels_since_unlock = 4
+            if boss_name == 'angel' and is_omega: # TODO
+                levels_since_unlock = 4
+            if boss_name == 'ultima' and is_ultima: # TODO
+                levels_since_unlock = 4
+            boss_probabilities[boss_name] = base_rate * (2 ** levels_since_unlock)
+        for start_level, (boss_name, base_rate) in fixed_bosses.items():
+            boss_probabilities[boss_name] = base_rate
+        
+        # Do random
+        roll = random.random()
+        cumulative_probability = 0
+        for boss_name, probability in boss_probabilities.items():
+            cumulative_probability += probability
+            if roll < cumulative_probability:
+                return boss_name, Simulator.create_enemy(level, boss_name)
+        return 'normal', Simulator.create_enemy(level, 'normal')
 
-        # Return enemy according to waterfall probability algo
-        for enemy_type in ENEMY_CHECK_ORDER:
-            do_rng = random.random() < ENEMY_PROBS[enemy_type]
-            extra_constraint = EXTRA_CONSTRAINTS[enemy_type] if enemy_type in EXTRA_CONSTRAINTS else True
-            if do_rng and extra_constraint:
-                return enemy_type, Simulator.create_enemy(attacker_level, enemy_type)
-            
-        # Default enemy type if no special conditions are met
-        return 'normal', Simulator.create_enemy(attacker_level, 'normal')  
-    
     @staticmethod
     def create_enemy(attacker_level, enemy_type):
         if enemy_type == 'ninja':
             return Gooster(stats=[100,10,10,59], boss_type=enemy_type)
         if enemy_type == 'sshiny':
             return Gooster(level=attacker_level+2) ## no shiny bonus on these
-        if enemy_type == 'angel':
+        if enemy_type == 'ultima':
+            gooster = Gooster(stats=[240,24,10,10], boss_type=enemy_type)
+            gooster.rand_level_to(40)
+            return gooster
+        if enemy_type == 'angel' or enemy_type == 'angel2':
             # Assume angel is created as 240/24/10/10 with random distribution up to level+5
             gooster = Gooster(stats=[240,24,10,10], boss_type=enemy_type)
-            gooster.rand_level_to(attacker_level+5)
+            gooster.rand_level_to(35)
             return gooster
         if enemy_type == 'omega':
             return Gooster(level=30, boss_type=enemy_type)
@@ -320,6 +349,8 @@ class Simulator:
             return Gooster(level=20, boss_type=enemy_type)
         if enemy_type == 'shiny':
             return Gooster(level=attacker_level+1, is_shiny=True)
+        if enemy_type == 'angelshiny':
+            return Gooster(level=35, is_shiny=True)
         
         # Otherwise return a regular gooster in range [level-3, level]
         opponent_level = random.choice(range(int(attacker_level) - 3, int(attacker_level) + 1))
@@ -345,11 +376,11 @@ class Simulator:
         for attacker in attackers:
             results[attacker] = {}
 
-            is_shiny_streak = False
+            is_shiny_streak = -1
             for _ in range(n):
                 enemy_type, enemy = Simulator.get_random_enemy(
                     attacker.level, is_elem=attacker.is_elem, 
-                    is_omega=attacker.is_omega, is_shiny_streak=is_shiny_streak
+                    is_omega=attacker.is_omega, shiny_streak=is_shiny_streak
                 )
 
                 # Ensure the enemy_type key exists in results[attacker]
@@ -364,10 +395,10 @@ class Simulator:
                     results[attacker][enemy_type]['goo'] += enemy.goo
 
                 # Start or continue shiny streak. Else end it.
-                if (enemy_type=='angel' and battle_won) or (is_shiny_streak and battle_won):
-                    is_shiny_streak = True
+                if battle_won and (enemy_type=='angel' or enemy_type=='angelshiny'):
+                    is_shiny_streak += 1
                 else:
-                    is_shiny_streak = False
+                    is_shiny_streak = -1
 
         return pd.DataFrame(results)
     
@@ -418,7 +449,7 @@ class Simulator:
             goo_matrix[attacker] = {}
 
             for enemy, stats in enemy_results.items():
-                if stats['n']:  # Avoid division by zero
+                if isinstance(stats, dict) and stats['n']:  # Avoid division by zero
                     winrate_matrix[attacker][enemy] = round(stats['wins'] / stats['n'], 3)
                     battle_count_matrix[attacker][enemy] = stats['n']
                     goo_matrix[attacker][enemy] = Simulator.humanize_number(stats['goo'])
@@ -482,11 +513,11 @@ def sim_set_builds():
     
 
 def sim_all_good_builds():
-    required_upgrades = [0,10,0,0]
+    required_upgrades = [5,10,5,0]
     target_level = 35
-    remaining_levels = target_level - 10 - 1
+    remaining_levels = target_level - sum(required_upgrades) - 1
     ## get all combos but only include attack ends with 2 or 5 also total attack <=35
-    next_upgrades = [p for p in Simulator._partitions(remaining_levels, 4) if (p[1]+20<35 and (p[1] % 10 == 2 or p[1] % 5 == 0)) ]
+    next_upgrades = [p for p in Simulator._partitions(remaining_levels, 4) if ((p[1] % 10 == 2 or p[1] % 5 == 0)) ]
     print(len(next_upgrades))
 
     attackers = []
@@ -495,7 +526,7 @@ def sim_all_good_builds():
         g.apply_upgrades(*upgrade)
         attackers.append(g)
     
-    df = Simulator.simulate_random_samples(attackers, 10000)
+    df = Simulator.simulate_random_samples(attackers, 5000)
     Simulator.export_results_to_excel(df)
 
 
