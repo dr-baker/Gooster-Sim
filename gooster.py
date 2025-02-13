@@ -171,7 +171,7 @@ class Simulator:
         Returns True if goo1 wins, False if goo2 wins.
 
         Assumptions:
-        - Faster gooster gets a free hit start of battle that can not crit
+        - First hit can not crit or be dodged
         - Crit fully bypasses dodge
         - Win is evaluated after each damage event and not in rounds (no ties)
         - In speed tie: first gooster is decided randomly at start of battle
@@ -185,34 +185,37 @@ class Simulator:
 
         attacker, defender = (g1_battle, g2_battle) if goo1_first else (g2_battle, g1_battle)
 
-        # Free hit
-        defender.take_damage(attacker.goo.atk)
-        if defender.current_hp <= 0:
-            return attacker == g1_battle
-
+        first_hit = True # First hit has special logic (no dodge/crit chance)
         # Battle loop
-        while True:
-            Simulator.attack(attacker, defender)
+        while True: 
+            Simulator.attack(attacker, defender, first_hit)
             if defender.current_hp <= 0:
                 return attacker == g1_battle
 
-            Simulator.attack(defender, attacker)
+            Simulator.attack(defender, attacker, first_hit)
             if attacker.current_hp <= 0:
                 return defender == g1_battle
 
+            first_hit = False
+
     @staticmethod
-    def attack(attacker, defender):
+    def attack(attacker, defender, first_hit):
         """
         Simulates an attack from one Goo to another.
         """
+        # Special logic for first hit (no dodge/crit chance)
+        if first_hit:
+            defender.take_damage(attacker.goo.atk)
+            return 'first hit'
+
         dh_chance = max(0, (attacker.goo.spd - defender.goo.ddg) * 0.05)
         ddg_chance = max(0, (defender.goo.ddg * 0.02) - (attacker.goo.spd * 0.01) )
         roll = random.random()
 
         if roll <= dh_chance:
             # Critical hit
-            defender.take_damage(attacker.goo.atk * 2)
-            return 'crit'
+            defender.take_damage(attacker.goo.atk * 2) # Note no dodge roll
+            return 'crit' 
         elif roll <= dh_chance + ddg_chance:
             # Attack dodged
             return 'dodge'
