@@ -33,7 +33,7 @@ class Gooster:
     Represents a Goo character with attributes like health, attack, speed, dodge, and level.
     """
 
-    def __init__(self, is_elem = True, is_omega = True, is_shiny = False, 
+    def __init__(self, is_elem = True, is_omega = True, is_ultima = True, is_shiny = False, 
                  boss_type=None, stats=None, upgrade_counts=None, level=None):
         self.hp = 100
         self.atk = 10
@@ -41,6 +41,7 @@ class Gooster:
         self.ddg = 10
         self.is_elem = is_omega or is_elem ## relevant as attacker
         self.is_omega = is_omega ## relevant as attacker
+        self.is_ultima = is_ultima ## relevant as attacker
         self.boss_type = boss_type ## relevant for goo value
         self.is_shiny = is_shiny ## relevant for goo value
         
@@ -287,7 +288,7 @@ class Simulator:
             return "angelshiny", Simulator.create_enemy(level, "angelshiny")
 
         bosses = {
-            # 35: ("ultima", 1/320),
+            35: ("ultima", 1/320),
             30: ("angel", 1/160),
             25: ("omega", 1/320),
             20: ("elem", 1/160),
@@ -363,7 +364,7 @@ class Simulator:
 
 
     @staticmethod
-    def simulate_random_samples(attackers, n=3000):
+    def simulate_random_samples(attackers, defender_stats=None, n=3000):
         """
         Simulates battles between attackers and randomly generated enemies.
 
@@ -381,10 +382,15 @@ class Simulator:
 
             is_shiny_streak = -1
             for _ in range(n):
-                enemy_type, enemy = Simulator.get_random_enemy(
-                    attacker.level, is_elem=attacker.is_elem, 
-                    is_omega=attacker.is_omega, shiny_streak=is_shiny_streak
-                )
+                if defender_stats:
+                    enemy_type = 'normal'
+                    enemy = Gooster(stats=defender_stats)
+                else: ## Get random enemy if none is passed
+                    enemy_type, enemy = Simulator.get_random_enemy(
+                        attacker.level, is_elem=attacker.is_elem, 
+                        is_omega=attacker.is_omega, shiny_streak=is_shiny_streak, 
+                        is_ultima=attacker.is_ultima
+                    )
 
                 # Ensure the enemy_type key exists in results[attacker]
                 if enemy_type not in results[attacker]:
@@ -516,8 +522,8 @@ def sim_set_builds():
     
 
 def sim_all_good_builds():
-    required_upgrades = [5,10,5,0]
-    target_level = 35
+    required_upgrades = [5,10,10,0]
+    target_level = 36
     remaining_levels = target_level - sum(required_upgrades) - 1
     ## get all combos but only include attack ends with 2 or 5 also total attack <=35
     next_upgrades = [p for p in Simulator._partitions(remaining_levels, 4) if ((p[1] % 10 == 2 or p[1] % 5 == 0)) ]
@@ -527,10 +533,32 @@ def sim_all_good_builds():
     for upgrade in next_upgrades:
         g = Gooster(upgrade_counts=required_upgrades)
         g.apply_upgrades(*upgrade)
+        g.is_omega = True
+        g.is_ultima = True
         attackers.append(g)
+
+    # required_upgrades = [5,10,0,0]
+    # target_level = 34
+    # remaining_levels = target_level - sum(required_upgrades) - 1
+    # ## get all combos but only include attack ends with 2 or 5 also total attack <=35
+    # next_upgrades = [p for p in Simulator._partitions(remaining_levels, 4) if ((p[1] % 10 == 2 or p[1] % 5 == 0)) ]
+    # print(len(next_upgrades))
+
+    # for upgrade in next_upgrades:
+    #     g = Gooster(upgrade_counts=required_upgrades)
+    #     g.apply_upgrades(*upgrade)
+    #     g.is_omega = True
+    #     attackers.append(g)
     
     df = Simulator.simulate_random_samples(attackers, 5000)
     Simulator.export_results_to_excel(df)
+
+def sim_1v1(attacker_stats,defender_stats,n):
+    attacker = Gooster(stats=attacker_stats)
+    attackers = [attacker]
+    print(attacker)
+    df = Simulator.simulate_random_samples(attackers, defender_stats=defender_stats, n=n)
+    print(df)
 
 
 
@@ -539,5 +567,7 @@ if __name__ == "__main__":
     # sim_all_builds_cross_product()
     # test_angel_gen()
     # sim_set_builds()
-    sim_all_good_builds()
+    # sim_all_good_builds()
+    sim_1v1([100,10,11,10],[110,10,10,10],10000)
+    sim_1v1([140,14,11,10],[140,13,10,12],10000)
 
