@@ -192,12 +192,13 @@ class Simulator:
             Simulator.attack(attacker, defender, first_hit)
             if defender.current_hp <= 0:
                 return attacker == g1_battle
+            
+            first_hit = False
 
             Simulator.attack(defender, attacker, first_hit)
             if attacker.current_hp <= 0:
                 return defender == g1_battle
 
-            first_hit = False
 
     @staticmethod
     def attack(attacker, defender, first_hit):
@@ -522,8 +523,8 @@ def sim_set_builds():
     
 
 def sim_all_good_builds():
-    required_upgrades = [5,10,10,0]
-    target_level = 36
+    required_upgrades = [5,10,5,0]
+    target_level = 39
     remaining_levels = target_level - sum(required_upgrades) - 1
     ## get all combos but only include attack ends with 2 or 5 also total attack <=35
     next_upgrades = [p for p in Simulator._partitions(remaining_levels, 4) if ((p[1] % 10 == 2 or p[1] % 5 == 0)) ]
@@ -550,7 +551,7 @@ def sim_all_good_builds():
     #     g.is_omega = True
     #     attackers.append(g)
     
-    df = Simulator.simulate_random_samples(attackers, 5000)
+    df = Simulator.simulate_random_samples(attackers, n=5000)
     Simulator.export_results_to_excel(df)
 
 def sim_1v1(attacker_stats,defender_stats,n):
@@ -567,7 +568,7 @@ if __name__ == "__main__":
     # sim_all_builds_cross_product()
     # test_angel_gen()
     # sim_set_builds()
-    # sim_all_good_builds()
-    sim_1v1([100,10,11,10],[110,10,10,10],10000)
-    sim_1v1([140,14,11,10],[140,13,10,12],10000)
+    sim_all_good_builds()
+    # sim_1v1([100,10,11,10],[110,10,10,10],100000)
+    # sim_1v1([140,14,11,10],[140,13,10,12],100000)
 
