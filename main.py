@@ -1,5 +1,6 @@
 import logging
-from gooster import Gooster,Simulator
+from gooster import Gooster
+from simulator import Simulator
 
 def test_angel_gen():
     for i in range(0,20):
