@@ -1,5 +1,6 @@
 import random
 import logging
+import itertools
 from gooster import Gooster, BattleInstance
 
 class Simulator:
