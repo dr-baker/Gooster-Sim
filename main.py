@@ -1,11 +1,75 @@
 import logging
+import pandas as pd
 from gooster import Gooster
 from simulator import Simulator
+from config import GOO_VALUES,IDOL_MULT
 
-def test_angel_gen():
-    for i in range(0,20):
-        g = Simulator.create_enemy(30, 'angel')
-        print(g)
+def humanize_number(value):
+    """Formats large numbers into a readable format (e.g., 2K, 12M)."""
+    return float(f"{value / 1_000_000:.1f}")
+    # if value >= 1_000_000:
+    #     return f"{value / 1_000_000:.1f}M"
+    # elif value >= 1_000:
+    #     return f"{value / 1_000:.1f}K"
+    # return str(value)
+
+def convert_to_winrate_df(results_df):
+    """
+    Converts the 3D results DataFrame into a 2D DataFrame with win rates and goo values.
+    """
+    return pd.DataFrame({
+        attacker: {
+            enemy: [
+                round(stats['wins'] / stats['n'], 3),   # Winrate
+                stats['n'],                              # Number of battles
+                Simulator.humanize_number(stats['goo'])           # Human-readable goo
+            ] if stats['n'] else None
+            for enemy, stats in enemy_results.items()
+        }
+        for attacker, enemy_results in results_df.to_dict().items()
+    }).T  # Transpose to make attackers rows and enemies columns
+    
+def export_results_to_excel(results_df, filename="simulation_results.xlsx"):
+    """
+    Converts the 3D results DataFrame into separate 2D matrices for win rates, battle counts, 
+    and goo earnings, then saves them as sheets in an Excel file.
+    
+    Parameters:
+    - results_df (pd.DataFrame): The results DataFrame from simulate_random_samples.
+    - filename (str): Name of the output Excel file.
+    """
+    winrate_matrix = {}
+    battle_count_matrix = {}
+    goo_matrix = {}
+
+    for attacker, enemy_results in results_df.to_dict().items():
+        winrate_matrix[attacker] = {}
+        battle_count_matrix[attacker] = {}
+        goo_matrix[attacker] = {}
+
+        for enemy, stats in enemy_results.items():
+            if isinstance(stats, dict) and stats['n']:  # Avoid division by zero
+                winrate_matrix[attacker][enemy] = round(stats['wins'] / stats['n'], 3)
+                battle_count_matrix[attacker][enemy] = stats['n']
+                goo_matrix[attacker][enemy] = Simulator.humanize_number(stats['goo'])
+            else:
+                winrate_matrix[attacker][enemy] = None
+                battle_count_matrix[attacker][enemy] = None
+                goo_matrix[attacker][enemy] = None
+
+    # Convert to DataFrame
+    winrate_df = pd.DataFrame(winrate_matrix).T
+    battle_count_df = pd.DataFrame(battle_count_matrix).T
+    goo_df = pd.DataFrame(goo_matrix).T
+
+    # Export to Excel
+    with pd.ExcelWriter(filename) as writer:
+        winrate_df.to_excel(writer, sheet_name="Win Rates")
+        battle_count_df.to_excel(writer, sheet_name="Battle Counts")
+        goo_df.to_excel(writer, sheet_name="Goo Earnings")
+
+    print(f"Results exported to {filename}")
+
 
 def sim_all_builds_cross_product():
     """
@@ -37,7 +101,6 @@ def sim_set_builds():
     df2.to_csv(file_name)
     Simulator.export_results_to_excel(df)
 
-    
 
 def sim_all_good_builds():
     required_upgrades = [5,10,5,0]

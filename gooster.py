@@ -1,28 +1,6 @@
 import random
-
-GOO_VALUES = {
-    "ultima": 80000,
-    "angel2": 40000,
-    "angel": 20000,
-    "omega": 10000,
-    "elem": 5000,
-    "level_20": 1000
-}
-IDOL_MULT = 16
-
-# ENEMY_PROBS = {
-#     "shiny":    0.1,
-#     "level_20":       0.1,
-#     "elem":     0.1,
-#     "omega":    0.05,
-#     # "angel":    0, # test <30
-#     "angel":    0.025, # was halved at one point
-#     "sshiny":   0.01,
-#     "ninja":    0.01,
-# }
-# ENEMY_CHECK_ORDER = ['shiny','level_20','elem','omega','angel','ninja','sshiny'] # ~introduction order
-
-
+import pandas as pd
+from config import GOO_VALUES, IDOL_MULT
 
 class Gooster:
     """
@@ -136,8 +114,6 @@ class Gooster:
         """
         # return f'{self.level}|{int((self.hp - 100) / 10)},{self.atk - 10},{self.spd - 10},{self.ddg - 10}'
         return f'{self.level}|{self.hp},{self.atk},{self.spd},{self.ddg}'
-
-###################################################################### SIMULATOR
 
 class BattleInstance:
     """
