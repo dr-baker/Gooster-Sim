@@ -1,17 +1,17 @@
 import logging
 import pandas as pd
+import openpyxl
 from gooster import Gooster
 from simulator import Simulator
 from config import GOO_VALUES,IDOL_MULT
 
-def humanize_number(value):
+def humanize_number(value, force_m=True, return_string=False):
     """Formats large numbers into a readable format (e.g., 2K, 12M)."""
-    return float(f"{value / 1_000_000:.1f}")
-    # if value >= 1_000_000:
-    #     return f"{value / 1_000_000:.1f}M"
-    # elif value >= 1_000:
-    #     return f"{value / 1_000:.1f}K"
-    # return str(value)
+    if force_m or value >= 1_000_000:
+        return f"{value / 1_000_000:.1f}M" if return_string else round(value / 1_000_000,3)
+    elif value >= 1_000:
+        return f"{value / 1_000:.1f}K" if return_string else round(value / 1_000,3)
+    return str(value)
 
 def convert_to_winrate_df(results_df):
     """
@@ -22,7 +22,7 @@ def convert_to_winrate_df(results_df):
             enemy: [
                 round(stats['wins'] / stats['n'], 3),   # Winrate
                 stats['n'],                              # Number of battles
-                Simulator.humanize_number(stats['goo'])           # Human-readable goo
+                humanize_number(stats['goo'],  force_m=True, return_string=False)           # Human-readable goo
             ] if stats['n'] else None
             for enemy, stats in enemy_results.items()
         }
@@ -51,7 +51,7 @@ def export_results_to_excel(results_df, filename="simulation_results.xlsx"):
             if isinstance(stats, dict) and stats['n']:  # Avoid division by zero
                 winrate_matrix[attacker][enemy] = round(stats['wins'] / stats['n'], 3)
                 battle_count_matrix[attacker][enemy] = stats['n']
-                goo_matrix[attacker][enemy] = Simulator.humanize_number(stats['goo'])
+                goo_matrix[attacker][enemy] = humanize_number(stats['goo'])
             else:
                 winrate_matrix[attacker][enemy] = None
                 battle_count_matrix[attacker][enemy] = None
@@ -96,15 +96,15 @@ def sim_set_builds():
     ]
 
     df = Simulator.simulate_random_samples(attackers, 10000)
-    df2 = Simulator.convert_to_winrate_df(df)
-    file_name = f'g_sample.csv'
-    df2.to_csv(file_name)
-    Simulator.export_results_to_excel(df)
+    # df2 = Simulator.convert_to_winrate_df(df)
+    # file_name = f'g_sample.csv'
+    # df2.to_csv(file_name)
+    return df
 
 
 def sim_all_good_builds():
     required_upgrades = [5,10,5,0]
-    target_level = 39
+    target_level = 31
     remaining_levels = target_level - sum(required_upgrades) - 1
     ## get all combos but only include attack ends with 2 or 5 also total attack <=35
     next_upgrades = [p for p in Simulator._partitions(remaining_levels, 4) if ((p[1] % 10 == 2 or p[1] % 5 == 0)) ]
@@ -132,14 +132,14 @@ def sim_all_good_builds():
     #     attackers.append(g)
     
     df = Simulator.simulate_random_samples(attackers, n=5000)
-    Simulator.export_results_to_excel(df)
+    return df
 
 def sim_1v1(attacker_stats,defender_stats,n):
     attacker = Gooster(stats=attacker_stats)
     attackers = [attacker]
     print(attacker)
     df = Simulator.simulate_random_samples(attackers, defender_stats=defender_stats, n=n)
-    print(df)
+    return df
 
 
 
@@ -148,7 +148,8 @@ if __name__ == "__main__":
     # sim_all_builds_cross_product()
     # test_angel_gen()
     # sim_set_builds()
-    sim_all_good_builds()
+    df = sim_all_good_builds()
     # sim_1v1([100,10,11,10],[110,10,10,10],100000)
     # sim_1v1([140,14,11,10],[140,13,10,12],100000)
+    export_results_to_excel(df)
 

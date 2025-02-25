@@ -3,6 +3,7 @@ import logging
 import itertools
 import pandas as pd
 from gooster import Gooster, BattleInstance
+from config import BOSS_RATES, SPECIAL_RATES
 
 class Simulator:
     """
@@ -69,16 +70,6 @@ class Simulator:
             # Normal hit
             defender.take_damage(attacker.goo.atk)
             return 'hit'
-
-    # @staticmethod
-    # def n_battles(goo1, goo2, n=100):
-    #     """
-    #     Simulates n battles between two Goo instances and calculates the win rate for goo1.
-    #     """
-    #     pool = multiprocessing.Pool(processes=4)
-    #     results = pool.starmap(Simulator.battle, [(goo1, goo2) for _ in range(n)])
-    #     pool.close()
-    #     return sum(results) / n
     
     @staticmethod
     def n_battles(goo1, goo2, n=100):
@@ -131,22 +122,9 @@ class Simulator:
             return "angel2", Simulator.create_enemy(level, "angel2")
         elif shiny_streak > -1:
             return "angelshiny", Simulator.create_enemy(level, "angelshiny")
-
-        bosses = {
-            35: ("ultima", 1/320),
-            30: ("angel", 1/160),
-            25: ("omega", 1/320),
-            20: ("elem", 1/160),
-            19: ("level_20", 1/160),
-        }
-        fixed_bosses = {
-            19: ("ninja", 1/80),
-            20: ("sshiny", 1/160),
-            25: ("shiny", 1/10),
-        }
         
         # Determine available bosses
-        available_bosses = {lvl: boss for lvl, boss in bosses.items() if level >= lvl}
+        available_bosses = {lvl: boss for lvl, boss in BOSS_RATES.items() if level >= lvl}
         
         boss_probabilities = {}
         # Adjust probabilities
@@ -163,7 +141,7 @@ class Simulator:
             if boss_name == 'ultima' and is_ultima: # TODO
                 levels_since_unlock = 4
             boss_probabilities[boss_name] = base_rate * (2 ** levels_since_unlock)
-        for start_level, (boss_name, base_rate) in fixed_bosses.items():
+        for start_level, (boss_name, base_rate) in SPECIAL_RATES.items():
             boss_probabilities[boss_name] = base_rate
         
         # Do random
