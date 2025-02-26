@@ -232,7 +232,7 @@ class Simulator:
                 if i>max(n/10, 500) and i%500==0:  
                     max_goo = max(total_goo_collected.values(), default=1)  # Avoid division by zero
                     if total_goo_collected[attacker] < early_stop_threshold * max_goo:
-                        print(f"Stopping early: {attacker} (N = {i};\tTotal Goo: {round(total_goo_collected[attacker]/1_000_000,1)} / {round(max_goo/1_000_000,1)})")
+                        # print(f"Stopping early: {attacker} (N = {i};\tTotal Goo: {round(total_goo_collected[attacker]/1_000_000,1)} / {round(max_goo/1_000_000,1)})")
                         attackers.remove(attacker)
 
         return pd.DataFrame(results)
