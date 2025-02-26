@@ -41,34 +41,97 @@ def export_results_to_excel(results_df, filename="simulation_results.xlsx"):
     winrate_matrix = {}
     battle_count_matrix = {}
     goo_matrix = {}
+    gpm_matrix = {}
 
     for attacker, enemy_results in results_df.to_dict().items():
         winrate_matrix[attacker] = {}
         battle_count_matrix[attacker] = {}
         goo_matrix[attacker] = {}
+        gpm_matrix[attacker] = {}
 
         for enemy, stats in enemy_results.items():
             if isinstance(stats, dict) and stats['n']:  # Avoid division by zero
                 winrate_matrix[attacker][enemy] = round(stats['wins'] / stats['n'], 3)
                 battle_count_matrix[attacker][enemy] = stats['n']
                 goo_matrix[attacker][enemy] = humanize_number(stats['goo'])
+                gpm_matrix[attacker][enemy] = humanize_number(stats['gpm'])
             else:
                 winrate_matrix[attacker][enemy] = None
                 battle_count_matrix[attacker][enemy] = None
                 goo_matrix[attacker][enemy] = None
+                gpm_matrix[attacker][enemy] = None
 
     # Convert to DataFrame
     winrate_df = pd.DataFrame(winrate_matrix).T
     battle_count_df = pd.DataFrame(battle_count_matrix).T
     goo_df = pd.DataFrame(goo_matrix).T
+    gpm_df = pd.DataFrame(gpm_matrix).T
 
     # Export to Excel
     with pd.ExcelWriter(filename) as writer:
         winrate_df.to_excel(writer, sheet_name="Win Rates")
         battle_count_df.to_excel(writer, sheet_name="Battle Counts")
         goo_df.to_excel(writer, sheet_name="Goo Earnings")
+        gpm_df.to_excel(writer, sheet_name="GPM")
 
     print(f"Results exported to {filename}")
+
+import pandas as pd
+
+def export_results_to_excel_v2(results_df, filename="simulation_results_v2.xlsx"):
+    """
+    Converts the 3D results DataFrame into a single structured DataFrame,
+    pivoting enemy types for Goo Earned, Win Rate, and Encounter Rate while keeping Total KPIs.
+
+    Parameters:
+    - results_df (pd.DataFrame): The results DataFrame from simulate_random_samples.
+    - filename (str): Name of the output Excel file.
+    """
+    processed_data = []
+
+    for attacker, enemy_results in results_df.to_dict().items():
+        total_goo = sum(stats['goo'] for stats in enemy_results.values() if isinstance(stats, dict))
+        total_n = sum(stats['n'] for stats in enemy_results.values() if isinstance(stats, dict))
+        gpm = total_goo / (total_n / 1000) if total_n else 0  # Correct GPM formula
+
+        row_data = {
+            "Attacker": attacker,
+            "Total Goo": humanize_number(total_goo), 
+            "Total Battles": total_n, 
+            "GPM": gpm  # Keep numeric for sorting
+        }
+
+        for enemy, stats in enemy_results.items():
+            if isinstance(stats, dict) and stats['n']:  # Avoid division by zero
+                row_data[f"{enemy} Goo"] = humanize_number(stats['goo'])
+                row_data[f"{enemy} Win Rate"] = f"{round(stats['wins'] / stats['n'], 3):.1%}"
+                row_data[f"{enemy} Encounter Rate"] = f"{round(stats['n'] / total_n, 3):.1%}"
+
+        processed_data.append(row_data)
+
+    # Convert to DataFrame
+    output_df = pd.DataFrame(processed_data)
+
+    # Ensure GPM is sorted numerically
+    output_df["GPM"] = pd.to_numeric(output_df["GPM"], errors="coerce")
+    output_df = output_df.sort_values(by="GPM", ascending=False)
+
+    # Reorder columns: KPI columns first, then grouped enemy columns by metric
+    kpi_columns = ["Attacker", "Total Goo", "Total Battles", "GPM"]
+
+    enemy_types = sorted({col.split()[0] for col in output_df.columns if " " in col})  # Extract unique enemy names
+    goo_columns = [f"{enemy} Goo" for enemy in enemy_types if f"{enemy} Goo" in output_df.columns]
+    win_rate_columns = [f"{enemy} Win Rate" for enemy in enemy_types if f"{enemy} Win Rate" in output_df.columns]
+    encounter_rate_columns = [f"{enemy} Encounter Rate" for enemy in enemy_types if f"{enemy} Encounter Rate" in output_df.columns]
+
+    ordered_columns = kpi_columns + goo_columns + win_rate_columns + encounter_rate_columns
+    output_df = output_df[ordered_columns]
+
+    # Export to Excel
+    output_df.to_excel(filename, index=False)
+
+    print(f"Results exported to {filename}")
+
 
 
 def sim_all_builds_cross_product():
@@ -152,4 +215,5 @@ if __name__ == "__main__":
     # sim_1v1([100,10,11,10],[110,10,10,10],100000)
     # sim_1v1([140,14,11,10],[140,13,10,12],100000)
     export_results_to_excel(df)
+    export_results_to_excel_v2(df)
 

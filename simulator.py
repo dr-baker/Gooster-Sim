@@ -181,7 +181,7 @@ class Simulator:
 
 
     @staticmethod
-    def simulate_random_samples(attackers, defender_stats=None, n=3000):
+    def simulate_random_samples(attackers, defender_stats=None, n=3000, early_stop_threshold=0.7):
         """
         Simulates battles between attackers and randomly generated enemies.
 
@@ -192,24 +192,25 @@ class Simulator:
         Returns:
         - pd.DataFrame: A summary of the simulation results.
         """
-        results = {}
+        results = {attacker: {} for attacker in attackers}
+        total_goo_collected = {attacker: 0 for attacker in attackers}  ## Track earnings of the best build for early stop condition
+        is_shiny_streak = {attacker: -1 for attacker in attackers}
+        for i in range(n):
+            # results[attacker] = {}
 
-        for attacker in attackers:
-            results[attacker] = {}
 
-            is_shiny_streak = -1
-            for _ in range(n):
+            for attacker in attackers:
                 if defender_stats:
                     enemy_type = 'normal'
                     enemy = Gooster(stats=defender_stats)
                 else: ## Get random enemy if none is passed
                     enemy_type, enemy = Simulator.get_random_enemy(
-                        attacker.level, attacker.boss_type, shiny_streak=is_shiny_streak
+                        attacker.level, attacker.boss_type, shiny_streak=is_shiny_streak[attacker]
                     )
 
                 # Ensure the enemy_type key exists in results[attacker]
                 if enemy_type not in results[attacker]:
-                    results[attacker][enemy_type] = {'n': 0, 'wins': 0, 'goo':0}
+                    results[attacker][enemy_type] = {'n': 0, 'wins': 0, 'goo':0, 'gpm':0}
 
                 # Update counts
                 results[attacker][enemy_type]['n'] += 1
@@ -217,12 +218,22 @@ class Simulator:
                 results[attacker][enemy_type]['wins'] += battle_won
                 if battle_won:
                     results[attacker][enemy_type]['goo'] += enemy.goo
+                    total_goo_collected[attacker] += enemy.goo  # Track total goo
+                if i%10==0:
+                    results[attacker][enemy_type]['gpm'] = results[attacker][enemy_type]['goo']/(results[attacker][enemy_type]['n']/1000)
 
                 # Start or continue shiny streak. Else end it.
                 if battle_won and (enemy_type=='angel' or enemy_type=='angelshiny'):
-                    is_shiny_streak += 1
+                    is_shiny_streak[attacker] += 1
                 else:
-                    is_shiny_streak = -1
+                    is_shiny_streak[attacker] = -1
+
+                # Early stopping condition: if an attacker's total goo is far below the best
+                if i>max(n/10, 500) and i%500==0:  
+                    max_goo = max(total_goo_collected.values(), default=1)  # Avoid division by zero
+                    if total_goo_collected[attacker] < early_stop_threshold * max_goo:
+                        print(f"Stopping early: {attacker} (N = {i};\tTotal Goo: {round(total_goo_collected[attacker]/1_000_000,1)} / {round(max_goo/1_000_000,1)})")
+                        attackers.remove(attacker)
 
         return pd.DataFrame(results)
 
@@ -265,10 +276,6 @@ def test_get_random_enemy(num_trials=10000):
         print(f"\nLevel {level}, Attacker: {attacker_type}")
         for enemy, rate in sorted(enemy_distribution.items(), key=lambda x: -x[1]):
             print(f"  {enemy}: {rate:.2f}%")
-    
-# Example usage
-test_get_random_enemy()
-
 
 if __name__=='__main__':
     # test_angel_gen()
