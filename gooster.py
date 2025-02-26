@@ -7,15 +7,12 @@ class Gooster:
     Represents a Goo character with attributes like health, attack, speed, dodge, and level.
     """
 
-    def __init__(self, is_elem = True, is_omega = True, is_ultima = True, is_shiny = False, 
+    def __init__(self, is_shiny = False, 
                  boss_type=None, stats=None, upgrade_counts=None, level=None):
         self.hp = 100
         self.atk = 10
         self.spd = 10
         self.ddg = 10
-        self.is_elem = is_omega or is_elem ## relevant as attacker
-        self.is_omega = is_omega ## relevant as attacker
-        self.is_ultima = is_ultima ## relevant as attacker
         self.boss_type = boss_type ## relevant for goo value
         self.is_shiny = is_shiny ## relevant for goo value
         
@@ -28,15 +25,6 @@ class Gooster:
             self.apply_upgrades(*upgrade_counts)
         if level:
             self.rand_level_to(level)
-
-    def set_stats(self, hp, atk, spd, ddg):
-        """
-        Applies multiple upgrades to the Goo's stats.
-        """
-        self.hp = hp
-        self.atk = atk
-        self.spd = spd
-        self.ddg = ddg
 
     @property
     def level(self):
@@ -52,6 +40,15 @@ class Gooster:
         mult = 2 if self.is_shiny else 1
         mult *= IDOL_MULT
         return (base_value+boss_bonus)*mult
+
+    def set_stats(self, hp, atk, spd, ddg):
+        """
+        Applies multiple upgrades to the Goo's stats.
+        """
+        self.hp = hp
+        self.atk = atk
+        self.spd = spd
+        self.ddg = ddg
             
     def apply_upgrades(self, hp, atk, spd, ddg):
         """

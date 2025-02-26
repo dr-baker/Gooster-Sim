@@ -112,7 +112,7 @@ class Simulator:
         return pd.DataFrame(results)
     
     @staticmethod
-    def get_random_enemy(level, is_elem=False,is_omega=False,shiny_streak=-1,is_ultima=False):
+    def get_random_enemy(level, attacker_type, shiny_streak=-1):
         """
         Returns a random enemy based on the player's level.
         Bosses become available every 5 levels, with their appearance rates increasing.
@@ -124,7 +124,7 @@ class Simulator:
             return "angelshiny", Simulator.create_enemy(level, "angelshiny")
         
         # Determine available bosses
-        available_bosses = {lvl: boss for lvl, boss in BOSS_RATES.items() if level >= lvl}
+        available_bosses = {lvl: boss for lvl, boss in BOSS_RATES.items()}
         
         boss_probabilities = {}
         # Adjust probabilities
@@ -132,13 +132,7 @@ class Simulator:
             # Calculate rate increase based on levels since unlock (caps at 5 levels)
             levels_since_unlock = min(level - start_level, 4)  # 0 to 4
             # Bonus for matching type
-            if boss_name == 'omega' and is_omega:
-                levels_since_unlock = 4
-            if boss_name == 'elem' and is_elem:
-                levels_since_unlock = 4
-            if boss_name == 'angel' and is_omega: # TODO
-                levels_since_unlock = 4
-            if boss_name == 'ultima' and is_ultima: # TODO
+            if boss_name == attacker_type:
                 levels_since_unlock = 4
             boss_probabilities[boss_name] = base_rate * (2 ** levels_since_unlock)
         for start_level, (boss_name, base_rate) in SPECIAL_RATES.items():
@@ -210,9 +204,7 @@ class Simulator:
                     enemy = Gooster(stats=defender_stats)
                 else: ## Get random enemy if none is passed
                     enemy_type, enemy = Simulator.get_random_enemy(
-                        attacker.level, is_elem=attacker.is_elem, 
-                        is_omega=attacker.is_omega, shiny_streak=is_shiny_streak, 
-                        is_ultima=attacker.is_ultima
+                        attacker.level, attacker.boss_type, shiny_streak=is_shiny_streak
                     )
 
                 # Ensure the enemy_type key exists in results[attacker]
@@ -241,6 +233,43 @@ def test_angel_gen():
     for i in range(0,20):
         g = Simulator.create_enemy(30, 'angel')
         print(g)
+    
+import random
+from collections import Counter
+
+def test_get_random_enemy(num_trials=10000):
+    """
+    Simulates get_random_enemy multiple times and counts the occurrences of each enemy type.
+    Assumes BOSS_RATES and SPECIAL_RATES are predefined.
+    """
+    levels_to_test = [1, 21, 24, 25, 29, 31, 34, 35]  # Different level scenarios
+    attacker_types = ["angel", "omega", "ultima"]  # Different attacker types to test
+    
+    results = {}
+
+    for attacker_type in attacker_types:
+        for level in levels_to_test:
+            key = (level, attacker_type)
+            enemy_counts = Counter()
+
+            for _ in range(num_trials):
+                enemy_name, _ = Simulator.get_random_enemy(level, attacker_type)
+                enemy_counts[enemy_name] += 1
+
+            # Convert counts to percentages
+            results[key] = {enemy: count / num_trials * 100 for enemy, count in enemy_counts.items()}
+    
+    # Display results
+    for key, enemy_distribution in results.items():
+        level, attacker_type = key
+        print(f"\nLevel {level}, Attacker: {attacker_type}")
+        for enemy, rate in sorted(enemy_distribution.items(), key=lambda x: -x[1]):
+            print(f"  {enemy}: {rate:.2f}%")
+    
+# Example usage
+test_get_random_enemy()
+
 
 if __name__=='__main__':
-    test_angel_gen()
+    # test_angel_gen()
+    test_get_random_enemy()
