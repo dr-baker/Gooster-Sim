@@ -6,7 +6,7 @@ GOO_VALUES = {
     "elem": 5000,
     "level_20": 1000
 }
-IDOL_MULT = 16
+IDOL_MULT = 32
 
 BOSS_RATES = {
     35: ("ultima", 1/320),
