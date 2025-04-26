@@ -148,7 +148,7 @@ class Simulator:
         return 'normal', Simulator.create_enemy(level, 'normal')
 
     @staticmethod
-    def create_enemy(attacker_level, enemy_type):
+    def create_enemy(attacker_level, enemy_type, force_level=None):
         if enemy_type == 'ninja':
             return Gooster(stats=[100,10,10,59], boss_type=enemy_type)
         if enemy_type == 'sshiny':
@@ -174,14 +174,17 @@ class Simulator:
             return Gooster(level=35, is_shiny=True)
         
         # Otherwise return a regular gooster in range [level-3, level]
-        opponent_level = random.choice(range(int(attacker_level) - 3, int(attacker_level) + 1))
+        if force_level:
+            opponent_level = random.choice(range(int(attacker_level) - 3, int(attacker_level) + 1))
+        else:
+            opponent_level = force_level
         return Gooster(level=opponent_level)
 
 
 
 
     @staticmethod
-    def simulate_random_samples(attackers, defender_stats=None, n=3000, early_stop_threshold=0.7):
+    def simulate_random_samples(attackers, defender_stats=None, fixed_level=None, n=3000, early_stop_threshold=0.7):
         """
         Simulates battles between attackers and randomly generated enemies.
 
@@ -203,6 +206,9 @@ class Simulator:
                 if defender_stats:
                     enemy_type = 'normal'
                     enemy = Gooster(stats=defender_stats)
+                if fixed_level:
+                    enemy_type = 'normal'
+                    enemy = Gooster(level=fixed_level)
                 else: ## Get random enemy if none is passed
                     enemy_type, enemy = Simulator.get_random_enemy(
                         attacker.level, attacker.boss_type, shiny_streak=is_shiny_streak[attacker]
